@@ -67,6 +67,8 @@ def create_primary_index(cluster:Cluster, collectionname:str):
     execute_qry("CREATE PRIMARY INDEX `#primary` ON veronacard.veronacard_db."+collectionname+"", cluster)
 
 
+
+
 def reformat_date(date:str) -> str:
     if len(date)<=8:
         date = date[0:6] + "20" + date[6:]
