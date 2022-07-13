@@ -140,13 +140,13 @@ def aggregate_to_POI():
             card_id, 
             swipe_date,
             swipe_time}) AS swipes
-    FROM veronacard.veronacard_db.mini_raw_table
-    GROUP BY POI_name"""
+    FROM veronacard.veronacard_db.{}
+    GROUP BY POI_name""".format(string_rawtable)
     try:
         res = cluster.query(qry_POI)
         for doc in res:
             key = "POI_" + doc["name"].replace(" ","")
-            print(cb.scope("veronacard_db").collection("mini_POI_db").upsert(key,doc))
+            print(cb.scope("veronacard_db").collection(string_POIdb).upsert(key,doc))
     except Exception as e:
         print (e)
 
@@ -258,8 +258,8 @@ def query3():
     # Results in 686 docs in mini db
     functions.execute_qry(qry,cluster)
 
-load_raw_data()
-aggregate_to_card()
+#load_raw_data()
+#aggregate_to_card()
 aggregate_to_POI()
 #generate_calendar()
 
