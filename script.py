@@ -7,7 +7,7 @@ import functions
 
 cb, cluster = functions.connect_to_db()
 
-mini = False  # Establishes if we're working on  full data or a smaller sample.
+mini = True  # Establishes if we're working on  full data or a smaller sample.
 
 if mini == True:
     string_carddb = "mini_card_db"
@@ -49,11 +49,11 @@ def load_raw_data():
     # Generate CSV names
     file = "dataset_veronacard_2014_2020/no_header/dati_X.csv"
     files = [  # file.replace("X","2014"),
-         # file.replace("X","2015"),
-         # file.replace("X","2016"),
-         # file.replace("X","2017"),
-         # file.replace("X","2018"),
-         # file.replace("X","2019"),
+         file.replace("X","2015"),
+         file.replace("X","2016"),
+         file.replace("X","2017"),
+         file.replace("X","2018"),
+         file.replace("X","2019"),
          file.replace("X","2020")
     ]
 
@@ -140,8 +140,8 @@ def aggregate_to_POI():
             card_id, 
             swipe_date,
             swipe_time}) AS swipes
-    FROM veronacard.veronacard_db.{}
-    GROUP BY POI_name""".format(string_rawtable)
+    FROM veronacard.veronacard_db.""" + string_rawtable +"""
+    GROUP BY POI_name"""
     try:
         res = cluster.query(qry_POI)
         for doc in res:
@@ -149,6 +149,8 @@ def aggregate_to_POI():
             print(cb.scope("veronacard_db").collection(string_POIdb).upsert(key,doc))
     except Exception as e:
         print (e)
+
+    functions.create_primary_index(cluster,string_POIdb)
 
 """
 
@@ -212,7 +214,7 @@ def query1_():
     functions.execute_qry(qry,cluster)
 
 def query2():
-    qry="""
+    qry=""" NO 0 MINIMUMS
     SELECT countedfinal.poiname1, countedfinal.countedswipes1
     FROM (
         SELECT POI1.name AS poiname1, COUNT(*) AS countedswipes1
@@ -234,18 +236,52 @@ def query2():
                 DATE_PART_STR(S2.swipe_date, "day") = 9
             GROUP BY POI2.name) AS counted)
     """
-    # Results in 16 docs in mini db
+
+    QRY = """SELECT daily_count.name, daily_count.countedswipes 
+        FROM ( /*SUBQUERY: find swipes count on 9/8/20 for every POI*/
+        SELECT POInames.name,IFMISSINGORNULL(partial_count.countedswipes,0) AS countedswipes 
+       /* I need this because otherwise if the POI has no swipes, it will not be included (like this, instead, it will be included with swipescount = 0) */
+        FROM (
+              SELECT POI1.name AS poiname, COUNT(*) AS countedswipes
+              FROM veronacard.veronacard_db.mini_POI_db AS POI1 UNNEST POI1.swipes AS S1
+                WHERE 
+                DATE_PART_STR(S1.swipe_date, "year") = 2020 AND
+                DATE_PART_STR(S1.swipe_date, "month") = 8 AND
+                DATE_PART_STR(S1.swipe_date, "day") = 9
+              GROUP BY POI1.name
+              ) AS partial_count
+        RIGHT JOIN (SELECT DISTINCT POI.name FROM veronacard.veronacard_db.mini_POI_db AS POI) 
+                    AS POInames  ON  partial_count.poiname == POInames.name
+    ) AS daily_count
+WHERE daily_count.countedswipes WITHIN (
+    SELECT MIN (daily_count1.countedswipes)
+    FROM(
+        SELECT POInames.name,IFMISSINGORNULL(partial_count.countedswipes,0) AS countedswipes
+        FROM ( /*SUBQUERY AGAIN*/
+              SELECT POI1.name AS poiname, COUNT(*) AS countedswipes
+              FROM veronacard.veronacard_db.mini_POI_db AS POI1 UNNEST POI1.swipes AS S1
+                WHERE 
+                DATE_PART_STR(S1.swipe_date, "year") = 2020 AND
+                DATE_PART_STR(S1.swipe_date, "month") = 8 AND
+                DATE_PART_STR(S1.swipe_date, "day") = 9
+              GROUP BY POI1.name
+              ) AS partial_count
+        RIGHT JOIN (SELECT DISTINCT POI.name FROM veronacard.veronacard_db.mini_POI_db AS POI) 
+                    AS POInames  ON  partial_count.poiname == POInames.name
+    ) AS daily_count1
+)"""
+    # Results in 14 docs in mini db
     functions.execute_qry(qry,cluster)
 
 def query3():
-    qry = """
+    qry = """"
         SELECT card.id as card_id, 
         ARRAY_AGG({s.POI_name,s.swipe_date, s.swipe_time}) 
         AS swipes
         FROM veronacard.veronacard_db.mini_card_db as card 
         UNNEST card.swipes AS s
-        WHERE s.POI_name == "Casa Giulietta" 
-        AND EXISTS (
+        WHERE
+        EXISTS (
             SELECT 1
             FROM veronacard.veronacard_db.mini_card_db AS card1 
          UNNEST card1.swipes AS s1
@@ -254,14 +290,23 @@ def query3():
               OR s1.swipe_date <> s.swipe_time)
             AND s1.POI_name == "Teatro Romano"
         )
+        AND EXISTS (
+            SELECT 1
+            FROM veronacard.veronacard_db.mini_card_db AS card2
+         UNNEST card2.swipes AS s2
+            WHERE card2.id == card.id
+            AND (s2.swipe_time <> s.swipe_time 
+              OR s2.swipe_date <> s.swipe_time)
+            AND s2.POI_name == "Casa Giulietta"
+        )
         GROUP BY card.id"""
-    # Results in 686 docs in mini db
+    # Results in 14 docs in minidb
     functions.execute_qry(qry,cluster)
 
-#load_raw_data()
-#aggregate_to_card()
+load_raw_data()
+aggregate_to_card()
 aggregate_to_POI()
-#generate_calendar()
+
 
 print("done!")
 

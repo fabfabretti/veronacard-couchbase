@@ -1,6 +1,3 @@
-import json
-
-import couchbase.bucket
 from couchbase.auth import PasswordAuthenticator
 from couchbase.bucket import Bucket
 from couchbase.cluster import Cluster
