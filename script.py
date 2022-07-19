@@ -1,5 +1,9 @@
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
+
+import time
+
+from couchbase.options import QueryOptions
 
 import functions
 
@@ -7,7 +11,9 @@ import functions
 
 cb, cluster = functions.connect_to_db()
 
-mini = True  # Establishes if we're working on  full data or a smaller sample.
+mini = False  # Establishes if we're working on  full data or a smaller sample.
+
+
 
 if mini == True:
     string_carddb = "mini_card_db"
@@ -17,20 +23,6 @@ else:
     string_carddb = "full_card_db"
     string_POIdb = "full_POI_db"
     string_rawtable="full_raw_table"
-
-
-def generate_calendar():
-    functions.flush_collections(cluster, "calendar")
-    import pandas as pd
-    date1 = '2014-01-01'
-    date2 = '2020-12-31'
-    mydates = pd.date_range(date1, date2).tolist()
-    for date in mydates:
-        date_time_obj = date.to_pydatetime()
-        date = date_time_obj.date()
-        key = date.strftime("%Y-%m-%d")
-        doc = { "date" : key}
-        cb.scope("veronacard_db").collection("calendar").upsert(key, doc)
 
 
 def load_raw_data():
@@ -49,9 +41,9 @@ def load_raw_data():
     # Generate CSV names
     file = "dataset_veronacard_2014_2020/no_header/dati_X.csv"
     files = [  # file.replace("X","2014"),
-         file.replace("X","2015"),
-         file.replace("X","2016"),
-         file.replace("X","2017"),
+         #file.replace("X","2015"),
+         #file.replace("X","2016"),
+         #file.replace("X","2017"),
          file.replace("X","2018"),
          file.replace("X","2019"),
          file.replace("X","2020")
@@ -101,7 +93,8 @@ def aggregate_to_card():
     # Flush collection if exists
     functions.flush_collections(cluster, string_carddb)
 
-    # Aggregate through N1QL, then upsert back to a new collection.
+    # Use N1QL to generate new table more easilly
+    start = time.time()
     qry_card = """SELECT DISTINCT card_id AS id,
            card_type AS type,
            card_activation as activation,
@@ -115,16 +108,20 @@ def aggregate_to_card():
              card_type,
              card_activation"""
     try:
-        res = cluster.query(qry_card)
+        opt = QueryOptions(timeout=timedelta(minutes=10)) # Needed to avoid timeout at 75 sec
+        res = cluster.query(qry_card, opt)
         for doc in res:
             key = "card_" + doc["id"]
             cb.scope("veronacard_db").collection(string_carddb).upsert(key,doc)
     except Exception as e:
         print(e)
+    end_query = time.time()
+    print("\tAggregating query time: " + str(end_query-start) + " seconds")
 
-    # Add primary index
+    # Create primary index in order to be able to query
     functions.create_primary_index(cluster,string_carddb)
-
+    end_op = time.time()
+    print("\tIndex creation time: " + str(end_op-end_query) + " seconds")
 
 def aggregate_to_POI():
     """
@@ -132,8 +129,12 @@ def aggregate_to_POI():
     :return: None
     """
 
+
     # Flush collection if exists
     functions.flush_collections(cluster, string_POIdb)
+
+    # Use N1QL to generate new table more easilly
+    start = time.time()
     qry_POI = """SELECT DISTINCT POI_name AS name,
            ARRAY_AGG({
             POI_device,
@@ -143,17 +144,22 @@ def aggregate_to_POI():
     FROM veronacard.veronacard_db.""" + string_rawtable +"""
     GROUP BY POI_name"""
     try:
-        res = cluster.query(qry_POI)
+        opt = QueryOptions(timeout=timedelta(minutes=10)) # Needed to avoid timeout at 75 sec
+        res = cluster.query(qry_POI, opt)
         for doc in res:
             key = "POI_" + doc["name"].replace(" ","")
             print(cb.scope("veronacard_db").collection(string_POIdb).upsert(key,doc))
     except Exception as e:
         print (e)
+    end_query = time.time()
+    print("\tAggregating query time: " + str(end_query-start) + " seconds")
 
+    # Create primary index in order to be able to query
     functions.create_primary_index(cluster,string_POIdb)
+    end_op = time.time()
+    print("\tIndex creation time: " + str(end_op-end_query) + " seconds")
 
 """
-
 SELECT DISTINCT POI_name AS name,
            (
            select calendar1.date, ARRAY_AGG({rawtable1.card_id}) as swipes
@@ -195,7 +201,6 @@ SELECT DISTINCT POI_name AS name,
     where DS.POI_name = rawtable.POI_name
     GROUP BY POI_name
     order by POI_name"""
-
 
 
 def query1_():
@@ -303,9 +308,11 @@ def query3():
     # Results in 14 docs in minidb
     functions.execute_qry(qry,cluster)
 
-load_raw_data()
-aggregate_to_card()
+
+# load_raw_data()
+# aggregate_to_card()
 aggregate_to_POI()
+
 
 
 print("done!")
