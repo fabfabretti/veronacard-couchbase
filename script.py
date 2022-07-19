@@ -294,3 +294,39 @@ aggregate_to_POI()
 
 print("done!")
 
+
+
+def unused_queries():
+    """
+        /* assegnato un punto di interesse e un mese di un anno, 
+        /* trovare per ogni giorno del mese il numero totale di accessi al POI.*/
+            SELECT s.swipe_date AS date, COUNT(*) AS access_count
+            FROM veronacard.""" + string_db + """.""" + string_carddb + """ AS card 
+                UNNEST swipes AS s
+            WHERE s.POI_name == "Casa Giulietta"
+            AND DATE_PART_STR(s.swipe_date, "month") = 8
+            AND DATE_PART_STR(s.swipe_date, "year") = 2020
+            GROUP BY s.swipe_date 
+            ORDER BY s.swipe_date
+
+
+            UNION
+            SELECT calendar.date, 0 AS access_count
+            FROM veronacard.""" + string_db + """.calendar as calendar
+        """
+    """SELECT DISTINCT POI_name AS a_name,
+        (select day0.date, day0.swipes
+        from (
+               select calendar1.date AS date, ARRAY_AGG({rawtable1.card_id, rawtable1.POI_name}) as swipes, count(*) as a_count
+               from veronacard.""" + string_db + """.calendar as calendar1 left join veronacard.""" + string_db + """.""" + string_rawtable + """ as rawtable1
+               on rawtable1.swipe_date = calendar1.date
+               group by calendar1.date
+               order by calendar1.date
+               ) as day0
+            ) as day unnest day.swipes as DS
+        FROM veronacard.""" + string_db + """.""" + string_rawtable + """ as rawtable
+        where DS.POI_name = rawtable.POI_name
+        GROUP BY POI_name
+        order by POI_name"""
+
+
