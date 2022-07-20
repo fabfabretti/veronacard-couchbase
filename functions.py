@@ -1,13 +1,17 @@
+from datetime import timedelta
+
 from couchbase.auth import PasswordAuthenticator
 from couchbase.bucket import Bucket
 from couchbase.cluster import Cluster
 from couchbase.options import (ClusterOptions, ClusterTimeoutOptions, QueryOptions)
 import csv
+from sql_formatter.core import format_sql
 
 
 def execute_qry(qry:str, cluster:Cluster):
     try:
-        return cluster.query(qry).execute()
+        opt = QueryOptions(timeout=timedelta(minutes=20)) # Needed to avoid timeout at 75 sec
+        return cluster.query(qry,opt).execute()
     except Exception as e:
         print (e)
 
@@ -84,4 +88,15 @@ def generate_calendar(cluster:Cluster, cb:Bucket):
         key = date.strftime("%Y-%m-%d")
         doc = { "date" : key}
         cb.scope("_default").collection("calendar").upsert(key, doc)
+    create_primary_index(cluster,"calendar","_default")
+    execute_qry("CREATE INDEX idx_date ON veronacard._default.calendar(date)",cluster)
 
+
+def format_qry(qry:str):
+    return format_sql(qry)\
+        .replace(" and "," AND ")\
+        .replace("ifmissingornull","IFMISSINGORNULL")\
+        .replace(" as ", " AS ").replace(" unnest "," UNNEST ")\
+        .replace(" count "," COUNT ")\
+        .replace("poi","POI")\
+        .replace("let ","LET")

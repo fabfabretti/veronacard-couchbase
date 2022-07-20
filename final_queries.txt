@@ -1,0 +1,35 @@
+
+
+-- query 1 final ver
+
+SELECT calendar.date,
+       IFMISSINGORNULL(counting.access_count, 0) AS access_count
+FROM   (SELECT s.swipe_date AS date,
+               COUNT (*) AS access_count
+        FROM   veronacard.veronacard_db.full_POI_db AS poidb UNNEST poidb.swipes AS s
+        WHERE  date_part_str(s.swipe_date, "year") = 2020
+           AND date_part_str(s.swipe_date, "month") = 7
+           AND poidb.name = 'Casa Giulietta'
+        GROUP BY s.swipe_date) AS counting
+    RIGHT JOIN (SELECT c.date AS date
+                FROM   veronacard._default.calendar AS c
+                WHERE  date_part_str(c.date, "year") = 2020
+                   AND date_part_str(c.date, "month") = 7) AS calendar
+        ON calendar.date == counting.date
+
+-- query 1 not optimized
+
+SELECT calendar.date,
+       IFMISSINGORNULL(counting.access_count, 0) AS access_count
+FROM   (SELECT s.swipe_date AS date,
+               COUNT (*) AS access_count
+        FROM   veronacard.veronacard_db.full_POI_db AS POIdb UNNEST POIdb.swipes AS s
+        WHERE  date_part_str(s.swipe_date, "year") = 2020
+           AND date_part_str(s.swipe_date, "month") = 7
+           AND POIdb.name = 'Casa Giulietta'
+        GROUP BY s.swipe_date) AS counting
+    RIGHT JOIN veronacard._default.calendar AS calendar
+        ON calendar.date == counting.date
+
+
+        
