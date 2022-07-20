@@ -1,0 +1,3 @@
+1. Assegnato un punto di interesse e un mese di un anno, trovare per ogni giorno del mese il numero totale di accessi al POI.
+2. Trovare il punto di interesse che ha avuto il numero minimo di accessi in un giorno assegnato.
+3. Dati due  POI, trovare i codici delle veronacard che hanno fatto strisciate nei due POI riportando tutte le strisciate fatte da quella verona card.

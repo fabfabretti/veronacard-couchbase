@@ -1,4 +1,7 @@
 
+-------------
+-- QUERY 1 --
+-------------
 
 -- query 1 final ver
 
@@ -6,15 +9,15 @@ SELECT calendar.date,
        IFMISSINGORNULL(counting.access_count, 0) AS access_count
 FROM   (SELECT s.swipe_date AS date,
                COUNT (*) AS access_count
-        FROM   veronacard.veronacard_db.full_POI_db AS poidb UNNEST poidb.swipes AS s
+        FROM   veronacard.veronacard_db.full_POI_db AS POIdb UNNEST POIdb.swipes AS s
         WHERE  date_part_str(s.swipe_date, "year") = 2020
-           AND date_part_str(s.swipe_date, "month") = 7
-           AND poidb.name = 'Casa Giulietta'
+           AND date_part_str(s.swipe_date, "month") = 1
+           AND POIdb.name = 'Arena'
         GROUP BY s.swipe_date) AS counting
     RIGHT JOIN (SELECT c.date AS date
                 FROM   veronacard._default.calendar AS c
                 WHERE  date_part_str(c.date, "year") = 2020
-                   AND date_part_str(c.date, "month") = 7) AS calendar
+                   AND date_part_str(c.date, "month") = 1) AS calendar
         ON calendar.date == counting.date
 
 -- query 1 not optimized
@@ -32,4 +35,66 @@ FROM   (SELECT s.swipe_date AS date,
         ON calendar.date == counting.date
 
 
-        
+
+-------------
+-- QUERY 2 --
+-------------
+
+
+
+
+-------------
+-- QUERY 3 --
+-------------
+
+-- query 3 
+SELECT card_det.id, ARRAY_AGG({s.POI_name,s.swipe_date,s.swipe_time}) AS swipes
+FROM  veronacard.veronacard_minidb.mini_card_db AS card_det UNNEST card_det.swipes AS s
+WHERE card_det.id WITHIN (
+    SELECT card.id as card_id
+    FROM veronacard.veronacard_minidb.mini_card_db AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
+    WHERE s1.POI_name = "Arena" 
+        AND s2.POI_name = "Teatro Romano" 
+        AND (s1.swipe_date <> s2.swipe_date OR s1.swipe_time <> s2.swipe_time)
+    ) 
+GROUP BY card_det.id
+
+
+-- query 3 NOT YET final ver
+
+SELECT card_det.id, ARRAY_AGG({s.POI_name,s.swipe_date,s.swipe_time}) AS swipes
+FROM  veronacard.veronacard_minidb.mini_card_db AS card_det UNNEST card_det.swipes AS s
+LET eligible_cards = (
+    SELECT RAW card.id 
+    FROM veronacard.veronacard_minidb.mini_card_db AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
+    WHERE s1.POI_name = "Arena" 
+        AND s2.POI_name = "Teatro Romano" 
+        AND (s1.swipe_date <> s2.swipe_date OR s1.swipe_time <> s2.swipe_time))
+WHERE card_det.id IN eligible_cards
+GROUP BY card_det.id
+
+-- query 3 now it works
+WITH eligibles AS (
+    SELECT DISTINCT card.id AS id
+    FROM veronacard.veronacard_db.full_card_db AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
+    WHERE s1.POI_name = "Castelvecchio" 
+        AND s2.POI_name = "Santa Anastasia" 
+        AND (s1.swipe_date <> s2.swipe_date OR s1.swipe_time <> s2.swipe_time))
+SELECT eligibles.id AS id, ARRAY_AGG({s.POI_name, s.swipe_date, s.swipe_time}) AS swipes
+FROM eligibles 
+JOIN veronacard.veronacard_db.full_card_db AS card ON card.id = eligibles.id 
+    UNNEST card.swipes AS s
+GROUP BY eligibles.id
+
+
+
+
+
+
+
+
+
+
+
+
+

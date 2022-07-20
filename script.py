@@ -1,22 +1,14 @@
 import csv
-import json
-from datetime import datetime, timedelta
-
+from datetime import timedelta
 import time
-
 from couchbase.options import QueryOptions
-
 import functions
 
 
 ## Setup
-
 cb, cluster = functions.connect_to_db()
 
 mini = False  # Establishes if we're working on  full data or a smaller sample.
-
-
-
 if mini == True:
     string_db = "veronacard_minidb"
     string_carddb = "mini_card_db"
@@ -171,65 +163,77 @@ def aggregate_to_POI():
     print("* Index creation time: {:.2f} seconds.".format(end - start))
 
 
-def query1():
+def query1(POI:str, month:str, year:str)->list:
     # Final version
-    qry = """SELECT calendar.date, IFMISSINGORNULL(counting.access_count,0) AS access_count FROM ( SELECT S.swipe_date AS date,COUNT (*) AS access_count FROM veronacard."""+string_db+"""."""+string_POIdb+""" AS POIdb UNNEST POIdb.swipes as S WHERE DATE_PART_STR(S.swipe_date, "year") = 2020 AND DATE_PART_STR(S.swipe_date, "month") = 7 AND POIdb.name = 'Casa Giulietta' GROUP BY S.swipe_date ) AS counting RIGHT JOIN (SELECT c.date AS date FROM veronacard._default.calendar AS c WHERE DATE_PART_STR(c.date, "year") = 2020 AND DATE_PART_STR(c.date, "month") = 7) AS calendar ON calendar.date == counting.date"""
+    qry = """
+    SELECT calendar.date,
+         IFMISSINGORNULL(counting.access_count,
+        0) AS access_count
+FROM 
+    (SELECT S.swipe_date AS date,
+        COUNT (*) AS access_count
+    FROM veronacard.veronacard_db.full_POI_db AS POIdb UNNEST POIdb.swipes AS S
+    WHERE DATE_PART_STR(S.swipe_date, "year") = 2020
+            AND DATE_PART_STR(S.swipe_date, "month") = 7
+            AND POIdb.name = 'Casa Giulietta'
+    GROUP BY  S.swipe_date ) AS counting
+RIGHT JOIN 
+    (SELECT c.date AS date
+    FROM veronacard._default.calendar AS c
+    WHERE DATE_PART_STR(c.date, "year") = 2020
+            AND DATE_PART_STR(c.date, "month") = 7) AS calendar
+    ON calendar.date == counting.date""".replace("veronacard_db",string_db)\
+        .replace("full_POI_db",string_POIdb)\
+        .replace("2020",year)\
+        .replace("7",month)\
+        .replace("Casa Giulietta",POI)
+
 
     # V 0.1 (no projection before join)
-    qry= """SELECT calendar.date, IFMISSINGORNULL(counting.access_count,0) AS access_count FROM ( SELECT S.swipe_date AS date,COUNT (*) AS access_count FROM veronacard."""+string_db+"""."""+string_POIdb+""" AS POIdb UNNEST POIdb.swipes as S WHERE DATE_PART_STR(S.swipe_date, "year") = 2020 AND DATE_PART_STR(S.swipe_date, "month") = 7 AND POIdb.name = 'Casa Giulietta' GROUP BY S.swipe_date ) AS counting RIGHT JOIN veronacard._default.calendar AS calendar ON calendar.date == counting.date"""
+    qry_0= """SELECT calendar.date, IFMISSINGORNULL(counting.access_count,0) AS access_count FROM ( SELECT S.swipe_date AS date,COUNT (*) AS access_count FROM veronacard."""+string_db+"""."""+string_POIdb+""" AS POIdb UNNEST POIdb.swipes as S WHERE DATE_PART_STR(S.swipe_date, "year") = 2020 AND DATE_PART_STR(S.swipe_date, "month") = 7 AND POIdb.name = 'Casa Giulietta' GROUP BY S.swipe_date ) AS counting RIGHT JOIN veronacard._default.calendar AS calendar ON calendar.date == counting.date"""
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
-def query2():
+def query2(date:str)-> list:
     qry_no0 = """ // NO 0 MINIMUMS
     SELECT countedfinal.poiname1, countedfinal.countedswipes1
     FROM (
         SELECT POI1.name AS poiname1, COUNT(*) AS countedswipes1
-        FROM veronacard.XXXX.YYYY AS POI1 UNNEST POI1.swipes AS S1
-            WHERE 
-                DATE_PART_STR(S1.swipe_date, "year") = 2020 AND
-                DATE_PART_STR(S1.swipe_date, "month") = 8 AND
-                DATE_PART_STR(S1.swipe_date, "day") = 9
+        FROM veronacard.veronacard_db.full_POI_db AS POI1 UNNEST POI1.swipes AS S1
+            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
         GROUP BY POI1.name
         ) AS countedfinal
     WHERE countedswipes1 WITHIN (
         SELECT MIN(counted.countedswipes2)
         FROM(
             SELECT POI2.name as poiname2, COUNT(*) as countedswipes2
-            FROM veronacard.XXXX.YYYY AS POI2 UNNEST POI2.swipes AS S2
-            WHERE 
-                DATE_PART_STR(S2.swipe_date, "year") = 2020 AND
-                DATE_PART_STR(S2.swipe_date, "month") = 8 AND
-                DATE_PART_STR(S2.swipe_date, "day") = 9
+            FROM veronacard.veronacard_db.full_POI_db AS POI2 UNNEST POI2.swipes AS S2
+            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
             GROUP BY POI2.name) AS counted)
-    """.replace("XXXX",string_db,"YYYY",string_carddb)
+    """.replace("veronacard_db",string_db).replace("full_POI_db",string_carddb).replace("2016-08-09",date)
 
-    qry_with = """
-    //CREATE INDEX ix1 ON veronacard.XXXX.YYYY(name);
-    //CREATE INDEX ix2 ON veronacard.XXXX.YYYY(ALL ARRAY DATE_FROMAT_STR(s.swipe_date,"1111-11-11") FOR s IN swipes END, name);
-    WITH swipeslist AS (SELECT p.name AS poiname, COUNT(1) AS countedswipes
-                    FROM veronacard.XXXX.YYYY AS p
-                    UNNEST p.swipes AS s
-                    WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2020-08-09"
-                    GROUP BY p.name),
-          daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
-                          FROM (SELECT RAW p.name
-                                FROM veronacard.XXXX.YYYY AS p
-                                WHERE p.name IS NOT NULL
-                                GROUP BY p.name) AS n
-                          LEFT JOIN swipeslist AS s
-                          ON s.poiname = n),
+    qry = """
+    WITH swipeslist AS (SELECT poi.name AS poiname, COUNT(*) AS countedswipes
+            FROM veronacard.veronacard_db.full_POI_db AS poi
+            UNNEST poi.swipes AS s
+            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
+            GROUP BY poi.name),
+      daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
+                      FROM (SELECT RAW poi.name
+                            FROM veronacard.veronacard_db.full_POI_db AS poi
+                            GROUP BY poi.name) AS n
+                      LEFT JOIN swipeslist AS s
+                      ON s.poiname = n),
           min_count AS (ARRAY_MIN(daily_count[*].countedswipes))
     SELECT d.*
     FROM daily_count AS d
-    WHERE d.countedswipes = min_count;
-    """.replace("XXXX",string_db,"YYYY",string_carddb)
+    WHERE d.countedswipes = min_count""".replace("veronacard_db",string_db).replace("full_POI_db",string_POIdb).replace("2016-08-09",date)
 
-    print(qry_with)
-    
-    functions.execute_qry(qry_with,cluster)
+    print(qry)
 
-def query3(POI1:str,POI2:str):
+    return functions.execute_qry(qry,cluster)
+
+def query3(POI1:str,POI2:str)-> list:
     qry_2exists = """SELECT card.id as card_id, ARRAY_AGG({s.POI_name,s.swipe_date, s.swipe_time}) AS swipes FROM veronacard.XXXX.YYYY as card UNNEST card.swipes AS s WHERE EXISTS ( SELECT 1 FROM veronacard.XXXX.YYYY AS card1 UNNEST card1.swipes AS s1 WHERE card1.id == card.id AND (s1.swipe_time <> s.swipe_time OR s1.swipe_date <> s.swipe_time) AND s1.POI_name == "Teatro Romano" ) AND EXISTS ( SELECT 1 FROM veronacard.XXXX.YYYY AS card2 UNNEST card2.swipes AS s2 WHERE card2.id == card.id AND (s2.swipe_time <> s.swipe_time OR s2.swipe_date <> s.swipe_time) AND s2.POI_name == "Casa Giulietta" ) GROUP BY card.id"""\
         .replace("XXXX",string_db).replace("YYYY",string_carddb)
 
@@ -263,7 +267,11 @@ def query_with_formatting(query_function):
 #aggregate_to_POI()
 
 start0 = time.time()
-query_with_formatting(query3("Verona Tour", "Arena"))
+
+#query_with_formatting(query1("Tomba Giulietta","6","2015"))
+query_with_formatting(query2("2020-04-05"))
+#query_with_formatting(query3("Verona Tour", "Santa Anastasia"))
+
 end = time.time()
 print("* Query time: {:.2f} seconds.".format(end - start0))
 
