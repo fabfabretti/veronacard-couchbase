@@ -72,3 +72,16 @@ def reformat_date(date:str) -> str:
     return date[6:]+"-"+date[3:5]+"-"+date[0:2]
 
 
+def generate_calendar(cluster:Cluster, cb:Bucket):
+    flush_collections(cluster, "calendar","_default")
+    import pandas as pd
+    date1 = '2014-01-01'
+    date2 = '2020-12-31'
+    mydates = pd.date_range(date1, date2).tolist()
+    for date in mydates:
+        date_time_obj = date.to_pydatetime()
+        date = date_time_obj.date()
+        key = date.strftime("%Y-%m-%d")
+        doc = { "date" : key}
+        cb.scope("_default").collection("calendar").upsert(key, doc)
+

@@ -109,6 +109,8 @@ def aggregate_to_card():
     GROUP BY card_id,
              card_type,
              card_activation"""
+    print(qry_card)
+
     try:
         opt = QueryOptions(timeout=timedelta(minutes=10)) # Needed to avoid timeout at 75 sec
         res = cluster.query(qry_card, opt)
@@ -117,13 +119,16 @@ def aggregate_to_card():
             cb.scope(string_db).collection(string_carddb).upsert(key,doc)
     except Exception as e:
         print(e)
-    end_query = time.time()
-    print("\tAggregating query time: " + str(end_query-start) + " seconds")
+
+    end = time.time()
+    print("* Query and upserting time: {:.2f} seconds. ".format(end - start))
+    start = end
 
     # Create primary index in order to be able to query
     functions.create_primary_index(cluster,string_carddb,string_db)
-    end_op = time.time()
-    print("\tIndex creation time: " + str(end_op-end_query) + " seconds")
+    end = time.time()
+    print("* Index creation time: {:.2f} seconds.".format(end - start))
+
 
 def aggregate_to_POI():
     """
@@ -153,15 +158,18 @@ def aggregate_to_POI():
             cb.scope(string_db).collection(string_POIdb).upsert(key,doc)
     except Exception as e:
         print (e)
-    end_query = time.time()
-    print("\tAggregating query time: " + str(end_query-start) + " seconds")
+
+    end = time.time()
+    print("* Query and upserting time: {:.2f} seconds. ".format(end - start))
+    start = end
 
     # Create primary index in order to be able to query
     functions.create_primary_index(cluster,string_POIdb,string_db)
-    end_op = time.time()
-    print("\tIndex creation time: " + str(end_op-end_query) + " seconds")
+    end = time.time()
+    print("* Index creation time: {:.2f} seconds.".format(end - start))
 
-def query1_():
+
+def query1():
     qry = """
     /* assegnato un punto di interesse e un mese di un anno, 
     /* trovare per ogni giorno del mese il numero totale di accessi al POI.*/
@@ -174,7 +182,9 @@ def query1_():
     ORDER BY S.swipe_date
     """
     # results in 6 docs in mini db
-    functions.execute_qry(qry,cluster)
+    print(qry)
+    return functions.execute_qry(qry,cluster)
+
 
 def query2():
     qry_no0=""" // NO 0 MINIMUMS
@@ -255,6 +265,7 @@ WHERE daily_count.countedswipes WITHIN (
 
     functions.execute_qry(qry_with,cluster)
 
+
 def query3():
     qry = """"
         SELECT card.id as card_id, 
@@ -285,12 +296,20 @@ def query3():
     # Results in 14 docs in minidb
     functions.execute_qry(qry,cluster)
 
+def query_with_time():
+    start = time.time()
+    res = query1()
+    print("* {} results".format(len(res)))
+    print("* Query time: {:.2f} seconds.".format(time.time() - start))
+
 
 #load_raw_data()
 #aggregate_to_card()
-aggregate_to_POI()
+#aggregate_to_POI()
 
+#query_with_time()
 
+functions.generate_calendar(cluster,cb)
 
 print("done!")
 
