@@ -36,13 +36,13 @@ def load_raw_data():
 
     # Generate CSV names
     file = "dataset_veronacard_2014_2020/no_header/dati_X.csv"
-    files = [   file.replace("X","2014"),
-         file.replace("X","2015"),
-         file.replace("X","2016"),
-         file.replace("X","2017"),
-         file.replace("X","2018"),
-         file.replace("X","2019"),
-         file.replace("X","2020")
+    files = [   #file.replace("X","2014"),
+         #file.replace("X","2015"),
+         file.replace("X","2016") #,
+         #file.replace("X","2017"),
+         #file.replace("X","2018"),
+         #file.replace("X","2019"),
+         #file.replace("X","2020")
     ]
 
     # Load from CSV
@@ -194,43 +194,38 @@ RIGHT JOIN
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
-def query2(date:str)-> list:
-    qry_no0 = """ // NO 0 MINIMUMS
-    SELECT countedfinal.poiname1, countedfinal.countedswipes1
-    FROM (
-        SELECT POI1.name AS poiname1, COUNT(*) AS countedswipes1
-        FROM veronacard.veronacard_db.full_POI_db AS POI1 UNNEST POI1.swipes AS S1
-            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
-        GROUP BY POI1.name
-        ) AS countedfinal
-    WHERE countedswipes1 WITHIN (
-        SELECT MIN(counted.countedswipes2)
-        FROM(
-            SELECT POI2.name as poiname2, COUNT(*) as countedswipes2
-            FROM veronacard.veronacard_db.full_POI_db AS POI2 UNNEST POI2.swipes AS S2
-            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
-            GROUP BY POI2.name) AS counted)
-    """.replace("veronacard_db",string_db).replace("full_POI_db",string_carddb).replace("2016-08-09",date)
-
-    qry = """
-    WITH swipeslist AS (SELECT poi.name AS poiname, COUNT(*) AS countedswipes
-            FROM veronacard.veronacard_db.full_POI_db AS poi
-            UNNEST poi.swipes AS s
-            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
+def query2(date:str,consider_0s:bool)-> list:
+    if consider_0s:
+        qry = """
+        WITH swipeslist AS (SELECT poi.name AS poiname, COUNT(*) AS countedswipes
+                FROM veronacard.veronacard_db.full_POI_db AS poi
+                UNNEST poi.swipes AS s
+                WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
+                GROUP BY poi.name),
+          daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
+                          FROM (SELECT RAW poi.name
+                                FROM veronacard.veronacard_db.full_POI_db AS poi
+                                GROUP BY poi.name) AS n
+                          LEFT JOIN swipeslist AS s
+                          ON s.poiname = n),
+              min_count AS (ARRAY_MIN(daily_count[*].countedswipes))
+        SELECT d.*
+        FROM daily_count AS d
+        WHERE d.countedswipes = min_count""".replace("veronacard_db", string_db).replace("full_POI_db",string_POIdb).replace("2016-08-09", date)
+    else:
+     qry = """
+        WITH swipescount AS (
+            SELECT poi.name AS poiname, COUNT (*) AS count
+            FROM veronacard.veronacard_db.full_POI_db AS poi UNNEST poi.swipes AS s
+            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2019-04-10"
             GROUP BY poi.name),
-      daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
-                      FROM (SELECT RAW poi.name
-                            FROM veronacard.veronacard_db.full_POI_db AS poi
-                            GROUP BY poi.name) AS n
-                      LEFT JOIN swipeslist AS s
-                      ON s.poiname = n),
-          min_count AS (ARRAY_MIN(daily_count[*].countedswipes))
-    SELECT d.*
-    FROM daily_count AS d
-    WHERE d.countedswipes = min_count""".replace("veronacard_db",string_db).replace("full_POI_db",string_POIdb).replace("2016-08-09",date)
+            min_count AS (ARRAY_MIN(swipescount[*].count))
+        SELECT sc.poiname, sc.count
+        FROM swipescount AS sc
+        WHERE sc.count = min_count
+     """.replace("veronacard_db",string_db).replace("full_POI_db",string_carddb).replace("2019-04-10",date)
 
     print(qry)
-
     return functions.execute_qry(qry,cluster)
 
 def query3(POI1:str,POI2:str)-> list:
@@ -262,18 +257,18 @@ def query_with_formatting(query_function):
 
 
 
-#load_raw_data()
+load_raw_data()
 #aggregate_to_card()
 #aggregate_to_POI()
 
-start0 = time.time()
+#start0 = time.time()
 
 #query_with_formatting(query1("Tomba Giulietta","6","2015"))
-query_with_formatting(query2("2020-04-05"))
+#query_with_formatting(query2("2015-04-05",False))
 #query_with_formatting(query3("Verona Tour", "Santa Anastasia"))
 
-end = time.time()
-print("* Query time: {:.2f} seconds.".format(end - start0))
+#end = time.time()
+#print("* Query time: {:.2f} seconds.".format(end - start0))
 
 #functions.generate_calendar(cluster,cb)
 
