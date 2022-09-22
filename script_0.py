@@ -12,19 +12,18 @@ from sys import getsizeof
 ## Setup
 cb, cluster = functions.connect_to_db()
 
- # Establishes if we're working on  full data or a smaller sample.
-mini = "True" in argv[1]
-if mini:
-    string_db = "mini_veronacard"
-    string_carddb = "mini_card"
-    string_POIdb = "mini_POI"
-    string_rawtable="mini_raw"
+mini = argv[1]  # Establishes if we're working on  full data or a smaller sample.
+if "True" in mini:
+    string_db = "veronacard_minidb"
+    string_carddb = "mini_card_db"
+    string_POIdb = "mini_POI_db"
+    string_rawtable="mini_raw_table"
 else:
     string_db = "veronacard_db"
     string_carddb = "full_card_db"
     string_POIdb = "full_POI_db"
     string_rawtable="full_raw_table"
-years = ["2014", "2015", "2016", "2017", "2018", "2019", "2020"]
+
 
 def load_raw_data():
     """
@@ -33,19 +32,25 @@ def load_raw_data():
     """
     # Work on smaller dataset
     limit = 0
-    if mini:
+    if mini == True:
         limit = 3000
 
     # Generate CSV names
     file = "dataset_veronacard_2014_2020/no_header/dati_X.csv"
+    files = [   file.replace("X","2014"),
+         file.replace("X","2015"),
+         file.replace("X","2016"),
+         file.replace("X","2017"),
+         file.replace("X","2018"),
+         file.replace("X","2019"),
+         file.replace("X","2020")
+    ]
 
+    timer_start = time.time()
     # Load from CSV
-    for year in years:
-        file = "dataset_veronacard_2014_2020/no_header/dati_X.csv".replace("X",year)
-        print("Loading "+ file)
-        functions.flush_collections(cluster,string_rawtable+"_"+year,string_db)
-        timer_start = time.time()
+    for file in files:
         with open(file) as csvfile:
+            print("\nLoading "+ file)
             reader = csv.reader(csvfile)
             count = 0
             for row in reader:
@@ -62,20 +67,20 @@ def load_raw_data():
                     "swipe_date": functions.reformat_date(row[0]),
                     "swipe_time": row[1]
                 }
+
                 try:
-                    cb.scope(string_db).collection(string_rawtable+"_"+year).upsert(key, value)
+                    cb.scope(string_db).collection(string_rawtable).upsert(key, value)
                     count += 1
                     timer_curr_m = (time.time() - timer_start) / 60
                     timer_curr_s = (time.time() - timer_start) % 60
-                    print("\r[{:.0f}:{:2.0f}] Progress: {} ".format(timer_curr_m, timer_curr_s,count),end=" ")
+                    print("\r\t[{:.0f}:{:2.0f}] Progress: {} ".format(timer_curr_m, timer_curr_s,count),end=" ")
                 except Exception as e:
                     print(e)
 
                 if limit != 0 and count >= limit:
                     break
-        print("")
-        functions.create_primary_index(cluster,string_rawtable+"_"+year,string_db)
-        print("")
+    print(" ")
+    functions.create_primary_index(cluster,string_rawtable,string_db)
 
 
 def aggregate_to_card():
@@ -83,11 +88,13 @@ def aggregate_to_card():
     Aggregates data, flattening everything on cards.
     :return: None
     """
+
     # Flush collection if exists
     functions.flush_collections(cluster, string_carddb,string_db)
+
+    # Use N1QL to generate new table more easilly
     timer_start = time.time()
-    for year in years:
-        print("* Aggregating year {} into cards".format(year))
+    for year in range(2014,2021):
         qry_card = """SELECT DISTINCT card_id AS id,
                card_type AS type,
                card_activation as activation,
@@ -99,16 +106,18 @@ def aggregate_to_card():
         FROM veronacard.veronacard_db.full_raw_table
         GROUP BY card_id,
                  card_type,
-                 card_activation""".replace("veronacard_db",string_db).replace("full_raw_table",string_rawtable+"_"+year)
-        #print(qry_card)
+                 card_activation""".replace("veronacard_db",string_db).replace("full_raw_table_"+year,string_rawtable)
+        print(qry_card)
+
         try:
-            opt = QueryOptions(timeout=timedelta(minutes=20)) # Needed to avoid timeout at 75 sec
+            opt = QueryOptions(timeout=timedelta(minutes=30)) # Needed to avoid timeout at 75 sec
             res = cluster.query(qry_card, opt)
             for doc in res:
                 key = "card_" + doc["id"]
                 cb.scope(string_db).collection(string_carddb).upsert(key,doc)
         except Exception as e:
             print(e)
+
 
     timer_curr_m = (time.time() - timer_start) / 60
     timer_curr_s = (time.time() - timer_start) % 60
@@ -126,29 +135,31 @@ def aggregate_to_POI():
     :return: None
     """
 
-    # Flush collection if exists    for year in years:
+    # Flush collection if exists
+    #functions.flush_collections(cluster, string_POIdb,string_db)
 
+    # Use N1QL to generate new table more easilly
     timer_start = time.time()
 
-    for year in years:
-        print("* Aggregating year {} into cards".format(year))
-        functions.flush_collections(cluster, string_POIdb+"_"+year ,string_db)
-        qry_POI = """SELECT DISTINCT POI_name AS name,
-               ARRAY_AGG({
-                POI_device,
-                card_id, 
-                swipe_date,
-                swipe_time}) AS swipes
-        FROM veronacard.veronacard_db.full_raw_table
-        GROUP BY POI_name""".replace("veronacard_db",string_db).replace("full_raw_table",string_rawtable+"_"+year)
-        #print(qry_POI)
-        try:
-            opt = QueryOptions(timeout=timedelta(minutes=20)) # Needed to avoid timeout at 75 sec
-            res = cluster.query(qry_POI, opt)
-            # Insert all results into POI table
-            [cb.scope(string_db).collection(string_POIdb+"_"+year).upsert("POI_" + doc["name"].replace(" ",""),doc) for doc in res]
-        except Exception as e:
-            print (e)
+    POIs = ["Museo Africano","Sighseeing", "Museo Miniscalchi","AMO","Centro Fotografia","Museo Conte","Verona Tour", "Museo Radio","Museo Lapidario","Museo Storia","San Zeno","San Fermo", "Tomba Giulietta","Castelvecchio","Palazzo della Ragione","Casa Giulietta", "Duomo","Teatro Romano","Giardino Giusti","Santa Anastasia","Arena","Torre Lamberti"]
+    qry_POI = """SELECT DISTINCT POI_name AS name,
+           ARRAY_AGG({
+            POI_device,
+            card_id, 
+            swipe_date,
+            swipe_time}) AS swipes
+    FROM veronacard.veronacard_db.full_raw_table
+    WHERE POI_name = "Arena"
+    GROUP BY POI_name""".replace("veronacard_db",string_db).replace("full_raw_table",string_rawtable)
+    print(qry_POI)
+    try:
+        opt = QueryOptions(timeout=timedelta(minutes=20)) # Needed to avoid timeout at 75 sec
+        res = cluster.query(qry_POI, opt)
+        for doc in res:
+            key = "POI_" + doc["POI_name"].replace(" ","") + doc["POI_year"]
+            cb.scope(string_db).collection(string_POIdb).upsert(key,doc)
+    except Exception as e:
+        print (e)
 
     print("* Query and upserting time: {:.2f} seconds. ".format(time.time() - timer_start))
 
@@ -249,18 +260,11 @@ def query_with_formatting(query_function):
     print("\t------ stats -----")
     print("* {} results".format(len(res)))
 
-if "load" in argv[1]:
- load_raw_data()
-
-if "aggregate_card" in argv[1]:
-    aggregate_to_card()
-
-if "aggregate_POI" in argv[1]:
-    aggregate_to_POI()
-else:
-    print("No operation selected...")
 
 
+# load_raw_data() # works
+aggregate_to_card()
+#aggregate_to_POI()
 
 #start0 = time.time()
 
@@ -274,4 +278,40 @@ else:
 #functions.generate_calendar(cluster,cb)
 
 print("done!")
+
+
+
+def unused_queries():
+    """
+        /* assegnato un punto di interesse e un mese di un anno, 
+        /* trovare per ogni giorno del mese il numero totale di accessi al POI.*/
+            SELECT s.swipe_date AS date, COUNT(*) AS access_count
+            FROM veronacard.""" + string_db + """.""" + string_carddb + """ AS card 
+                UNNEST swipes AS s
+            WHERE s.POI_name == "Casa Giulietta"
+            AND DATE_PART_STR(s.swipe_date, "month") = 8
+            AND DATE_PART_STR(s.swipe_date, "year") = 2020
+            GROUP BY s.swipe_date 
+            ORDER BY s.swipe_date
+
+
+            UNION
+            SELECT calendar.date, 0 AS access_count
+            FROM veronacard.""" + string_db + """.calendar as calendar
+        """
+    """SELECT DISTINCT POI_name AS a_name,
+        (select day0.date, day0.swipes
+        from (
+               select calendar1.date AS date, ARRAY_AGG({rawtable1.card_id, rawtable1.POI_name}) as swipes, count(*) as a_count
+               from veronacard.""" + string_db + """.calendar as calendar1 left join veronacard.""" + string_db + """.""" + string_rawtable + """ as rawtable1
+               on rawtable1.swipe_date = calendar1.date
+               group by calendar1.date
+               order by calendar1.date
+               ) as day0
+            ) as day unnest day.swipes as DS
+        FROM veronacard.""" + string_db + """.""" + string_rawtable + """ as rawtable
+        where DS.POI_name = rawtable.POI_name
+        GROUP BY POI_name
+        order by POI_name"""
+
 
