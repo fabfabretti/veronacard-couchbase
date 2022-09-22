@@ -1,13 +1,10 @@
 import csv
 import json
-import sys
 from datetime import timedelta
 import time
 from sys import argv
-
 from couchbase.options import QueryOptions
 import functions
-from sys import getsizeof
 
 ## Setup
 cb, cluster = functions.connect_to_db()
@@ -113,6 +110,7 @@ def aggregate_to_card():
     timer_curr_m = (time.time() - timer_start) / 60
     timer_curr_s = (time.time() - timer_start) % 60
     print("* Query and upserting time: {:.0f}:{:2.0f}. ".format(timer_curr_m,timer_curr_s))
+    functions.create_primary_index(cluster,string_db,string_carddb)
 
 
     # Create primary index in order to be able to query
@@ -186,7 +184,6 @@ RIGHT JOIN
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
-
 def query2(date:str,consider_0s:bool)-> list:
     print("\n2. Trovare il punto di interesse che ha avuto il numero minimo di accessi in un giorno assegnato.\n\n\t ---- query ----")
 
@@ -231,23 +228,34 @@ def query2(date:str,consider_0s:bool)-> list:
     return functions.execute_qry(qry,cluster)
 
 def query3(POI1:str,POI2:str)-> list:
-    qry_2exists = """SELECT card.id as card_id, ARRAY_AGG({s.POI_name,s.swipe_date, s.swipe_time}) AS swipes FROM veronacard.XXXX.YYYY as card UNNEST card.swipes AS s WHERE EXISTS ( SELECT 1 FROM veronacard.XXXX.YYYY AS card1 UNNEST card1.swipes AS s1 WHERE card1.id == card.id AND (s1.swipe_time <> s.swipe_time OR s1.swipe_date <> s.swipe_time) AND s1.POI_name == "Teatro Romano" ) AND EXISTS ( SELECT 1 FROM veronacard.XXXX.YYYY AS card2 UNNEST card2.swipes AS s2 WHERE card2.id == card.id AND (s2.swipe_time <> s.swipe_time OR s2.swipe_date <> s.swipe_time) AND s2.POI_name == "Casa Giulietta" ) GROUP BY card.id"""\
-        .replace("XXXX",string_db).replace("YYYY",string_carddb)
+    print("3. Dati due  POI, trovare i codici delle veronacard che hanno fatto strisciate nei due POI riportando tutte le strisciate fatte da quella verona card.")
+
+    print("[CREATING INDEX ON card(id)")
+    functions.execute_qry("create index idx_cardid if not exists on veronacard.mini_veronacard.mini_card(id)",cluster)
+
+    print("\t ---- query ----")
+
 
     qry = """WITH eligibles AS (
     SELECT DISTINCT card.id AS id
-    FROM veronacard.veronacard_db.full_card_db AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
+    FROM veronacard.mini_veronacard.mini_card AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
     WHERE s1.POI_name = "Verona Tour" 
         AND s2.POI_name = "Santa Anastasia" 
         AND (s1.swipe_date <> s2.swipe_date OR s1.swipe_time <> s2.swipe_time))
     SELECT eligibles.id AS id, ARRAY_AGG({s.POI_name, s.swipe_date, s.swipe_time}) AS swipes
     FROM eligibles 
-    JOIN veronacard.veronacard_db.full_card_db AS card ON card.id = eligibles.id 
+    JOIN veronacard.mini_veronacard.mini_card AS card ON card.id = eligibles.id 
         UNNEST card.swipes AS s
-    GROUP BY eligibles.id""".replace("veronacard_db",string_db).replace("full_card_db",string_carddb).\
-        replace("Verona Tour",POI1).replace("Santa Anastasia",POI2)
+    GROUP BY eligibles.id"""\
+        .replace("mini_veronacard",string_db)\
+        .replace("mini_card",string_carddb)\
+        .replace("Verona Tour",POI1)\
+        .replace("Santa Anastasia",POI2)
+
     print(functions.format_qry(qry))
+
     return functions.execute_qry(qry,cluster)
+
 
 def query_with_formatting(query_function):
     res = query_function
@@ -269,6 +277,8 @@ elif "query1" in argv[1]:
     query_with_formatting(query1("Arena","7","2015"))
 elif "query2" in argv[1]:
     query_with_formatting(query2("2016-08-09","0s" in argv[1]))
+elif "query3" in argv[1]:
+    query_with_formatting(query3("Verona Tour","Santa Anastasia"))
 else:
     print("No operation selected...")
 
