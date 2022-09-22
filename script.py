@@ -20,10 +20,10 @@ if mini:
     string_POIdb = "mini_POI"
     string_rawtable="mini_raw"
 else:
-    string_db = "veronacard_db"
-    string_carddb = "full_card_db"
-    string_POIdb = "full_POI_db"
-    string_rawtable="full_raw_table"
+    string_db = "full_veronacard"
+    string_carddb = "full_card"
+    string_POIdb = "full_POI"
+    string_rawtable="full_raw"
 years = ["2014", "2015", "2016", "2017", "2018", "2019", "2020"]
 
 def load_raw_data():
@@ -149,6 +149,7 @@ def aggregate_to_POI():
             [cb.scope(string_db).collection(string_POIdb+"_"+year).upsert("POI_" + doc["name"].replace(" ",""),doc) for doc in res]
         except Exception as e:
             print (e)
+        functions.create_primary_index(cluster,string_POIdb+"_"+year,string_db)
 
     print("* Query and upserting time: {:.2f} seconds. ".format(time.time() - timer_start))
 
@@ -159,14 +160,14 @@ def aggregate_to_POI():
 
 def query1(POI:str, month:str, year:str)->list:
     # Final version
-    qry = """
-    SELECT calendar.date,
+    print("1. Assegnato un punto di interesse e un mese di un anno, trovare per ogni giorno del mese il numero totale di accessi al POI.\n---- query ----")
+    qry = """SELECT calendar.date,
          IFMISSINGORNULL(counting.access_count,
         0) AS access_count
 FROM 
     (SELECT S.swipe_date AS date,
         COUNT (*) AS access_count
-    FROM veronacard.veronacard_db.full_POI_db AS POIdb UNNEST POIdb.swipes AS S
+    FROM veronacard.mini_veronacard.%collection%_2015 AS POIdb UNNEST POIdb.swipes AS S
     WHERE DATE_PART_STR(S.swipe_date, "year") = 2020
             AND DATE_PART_STR(S.swipe_date, "month") = 7
             AND POIdb.name = 'Casa Giulietta'
@@ -176,15 +177,12 @@ RIGHT JOIN
     FROM veronacard._default.calendar AS c
     WHERE DATE_PART_STR(c.date, "year") = 2020
             AND DATE_PART_STR(c.date, "month") = 7) AS calendar
-    ON calendar.date == counting.date""".replace("veronacard_db",string_db)\
-        .replace("full_POI_db",string_POIdb)\
-        .replace("2020",year)\
+    ON calendar.date == counting.date"""\
+        .replace("%collection%",string_POIdb)\
+        .replace("2015",year)\
         .replace("7",month)\
         .replace("Casa Giulietta",POI)
 
-
-    # V 0.1 (no projection before join)
-    qry_0= """SELECT calendar.date, IFMISSINGORNULL(counting.access_count,0) AS access_count FROM ( SELECT S.swipe_date AS date,COUNT (*) AS access_count FROM veronacard."""+string_db+"""."""+string_POIdb+""" AS POIdb UNNEST POIdb.swipes as S WHERE DATE_PART_STR(S.swipe_date, "year") = 2020 AND DATE_PART_STR(S.swipe_date, "month") = 7 AND POIdb.name = 'Casa Giulietta' GROUP BY S.swipe_date ) AS counting RIGHT JOIN veronacard._default.calendar AS calendar ON calendar.date == counting.date"""
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
@@ -243,20 +241,24 @@ def query3(POI1:str,POI2:str)-> list:
 
 def query_with_formatting(query_function):
     res = query_function
-    #print("\t------ results -----")
-    #for doc in res[0:10]:
-    #    print(json.dumps(doc,indent=2))
+    print("\t------ results -----")
+    for doc in res[0:10]:
+        print(json.dumps(doc,indent=2))
     print("\t------ stats -----")
-    print("* {} results".format(len(res)))
+    print("* {} documents".format(len(res)))
 
 if "load" in argv[1]:
  load_raw_data()
-
-if "aggregate_card" in argv[1]:
+elif "aggregate_card" in argv[1]:
     aggregate_to_card()
-
-if "aggregate_POI" in argv[1]:
+elif "aggregate_POI" in argv[1]:
     aggregate_to_POI()
+elif "generate calendar" in argv[1]:
+    functions.generate_calendar(cluster, cb)
+elif "query1":
+    query_with_formatting(query1("Arena","7","2015"))
+elif "query2":
+    query_with_formatting(query1("Arena","7","2015"))
 else:
     print("No operation selected...")
 
@@ -264,14 +266,10 @@ else:
 
 #start0 = time.time()
 
-#query_with_formatting(query1("Tomba Giulietta","6","2015"))
-#query_with_formatting(query2("2015-04-05",False))
-#query_with_formatting(query3("Verona Tour", "Santa Anastasia"))
 
 #end = time.time()
 #print("* Query time: {:.2f} seconds.".format(end - start0))
 
-#functions.generate_calendar(cluster,cb)
 
 print("done!")
 
