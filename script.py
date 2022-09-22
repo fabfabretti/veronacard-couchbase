@@ -186,37 +186,47 @@ RIGHT JOIN
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
+
 def query2(date:str,consider_0s:bool)-> list:
+    print("\n2. Trovare il punto di interesse che ha avuto il numero minimo di accessi in un giorno assegnato.\n\n\t ---- query ----")
+
+    year = date[0:4]
     if consider_0s:
+        print("[Considering days with 0 access]")
         qry = """
         WITH swipeslist AS (SELECT poi.name AS poiname, COUNT(*) AS countedswipes
-                FROM veronacard.veronacard_db.full_POI_db AS poi
+                FROM veronacard.mini_veronacard.mini_POI_2016 AS poi
                 UNNEST poi.swipes AS s
                 WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
                 GROUP BY poi.name),
           daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
                           FROM (SELECT RAW poi.name
-                                FROM veronacard.veronacard_db.full_POI_db AS poi
+                                FROM veronacard.mini_veronacard.mini_POI_2016 AS poi
                                 GROUP BY poi.name) AS n
                           LEFT JOIN swipeslist AS s
                           ON s.poiname = n),
               min_count AS (ARRAY_MIN(daily_count[*].countedswipes))
         SELECT d.*
         FROM daily_count AS d
-        WHERE d.countedswipes = min_count""".replace("veronacard_db", string_db).replace("full_POI_db",string_POIdb).replace("2016-08-09", date)
+        WHERE d.countedswipes = min_count"""\
+            .replace("mini_veronacard", string_db)\
+            .replace("full_POI_2016",string_POIdb+"_"+year)\
+            .replace("2016-08-09", date)
     else:
-     qry = """
-        WITH swipescount AS (
-            SELECT poi.name AS poiname, COUNT (*) AS count
-            FROM veronacard.veronacard_db.full_POI_db AS poi UNNEST poi.swipes AS s
-            WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2019-04-10"
-            GROUP BY poi.name),
-            min_count AS (ARRAY_MIN(swipescount[*].count))
+        print("\n[NOT considering days with 0 access]")
+        qry = \
+        """WITH swipescount AS (
+                SELECT poi.name AS poiname, COUNT (*) AS count
+                FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNNEST poi.swipes AS s
+                WHERE s.swipe_date = "2014-12-29"
+                GROUP BY poi.name),
+                min_count AS (ARRAY_MIN(swipescount[*].count))
         SELECT sc.poiname, sc.count
         FROM swipescount AS sc
         WHERE sc.count = min_count
-     """.replace("veronacard_db",string_db).replace("full_POI_db",string_carddb).replace("2019-04-10",date)
-
+         """.replace("mini_POI_2014",string_carddb+"_"+year).\
+            replace("2019-04-10",date)
+    # TODO: IF 0s ARE ADMITTED, RN IT ONLY CHECKS POIs THAT EXIST IN THAT YEAR.
     print(qry)
     return functions.execute_qry(qry,cluster)
 
@@ -241,7 +251,7 @@ def query3(POI1:str,POI2:str)-> list:
 
 def query_with_formatting(query_function):
     res = query_function
-    print("\t------ results -----")
+    print("\n\n\t------ results -----")
     for doc in res[0:10]:
         print(json.dumps(doc,indent=2))
     print("\t------ stats -----")
@@ -255,10 +265,10 @@ elif "aggregate_POI" in argv[1]:
     aggregate_to_POI()
 elif "generate calendar" in argv[1]:
     functions.generate_calendar(cluster, cb)
-elif "query1":
+elif "query1" in argv[1]:
     query_with_formatting(query1("Arena","7","2015"))
-elif "query2":
-    query_with_formatting(query1("Arena","7","2015"))
+elif "query2" in argv[1]:
+    query_with_formatting(query2("2016-08-09","0s" in argv[1]))
 else:
     print("No operation selected...")
 
