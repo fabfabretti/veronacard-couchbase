@@ -176,6 +176,7 @@ RIGHT JOIN
     WHERE DATE_PART_STR(c.date, "year") = 2020
             AND DATE_PART_STR(c.date, "month") = 7) AS calendar
     ON calendar.date == counting.date"""\
+        .replace("mini_veronacard",string_scope)\
         .replace("%collection%", string_POIcollection)\
         .replace("2015",year)\
         .replace("7",month)\
@@ -279,8 +280,20 @@ elif "query2" in argv[1]:
     query_with_formatting(query2("2016-08-09","0s" in argv[1]))
 elif "query3" in argv[1]:
     query_with_formatting(query3("Verona Tour","Santa Anastasia"))
+elif "idx_card" in argv[1]:
+    for year in years:
+        functions.create_primary_index(cluster,"full_card_"+year,string_scope)
 else:
     print("No operation selected...")
 
 print("done!")
 
+###
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2014;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2015;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2016;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2017;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2018;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2019;
+#create primary index if not exists on veronacard.full_veronacard.full_POI_2020;
+###
