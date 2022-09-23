@@ -43,7 +43,7 @@ def connect_to_db() -> (Bucket, Cluster):
 
 
 def flush_collections(cluster:Cluster, collectionname:str,scopename:str):
-    print("* ["+ collectionname +"] Dropping collection if exists\t", end="")
+    print("* Dropping collection "+ collectionname +" if exists")
     qry = "DROP COLLECTION veronacard."+scopename+".{} IF EXISTS".format(collectionname)
     try:
         res = cluster.query(qry)
@@ -51,11 +51,10 @@ def flush_collections(cluster:Cluster, collectionname:str,scopename:str):
         res.execute()
     except Exception as e:
         print(e)
-    print("* ["+ collectionname +"] Creating collection\t", end="")
+    print("* Creating collection "+collectionname+"if exists")
     qry = "CREATE COLLECTION veronacard."+scopename+".{} IF NOT EXISTS".format(collectionname)
     try:
         res = cluster.query(qry)
-        print(res)
         res.execute()
     except Exception as e:
         print(e)
@@ -99,4 +98,6 @@ def format_qry(qry:str):
         .replace(" as ", " AS ").replace(" unnest "," UNNEST ")\
         .replace(" count "," COUNT ")\
         .replace("poi","POI")\
-        .replace("let ","LET")
+        .replace("let ","LET")\
+        .replace("with","WITH")
+

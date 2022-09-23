@@ -97,7 +97,7 @@ def aggregate_to_card():
         GROUP BY card_id,
                  card_type,
                  card_activation""".replace("veronacard_db", string_scope).replace("full_raw_table", string_rawcollection + "_" + year)
-        #print(qry_card)
+        print(qry_card)
         try:
             opt = QueryOptions(timeout=timedelta(minutes=20)) # Needed to avoid timeout at 75 sec
             res = cluster.query(qry_card, opt)
@@ -178,7 +178,7 @@ RIGHT JOIN
     ON calendar.date == counting.date"""\
         .replace("mini_veronacard",string_scope)\
         .replace("%collection%", string_POIcollection)\
-        .replace("2015",year)\
+        .replace("2020",year)\
         .replace("7",month)\
         .replace("Casa Giulietta",POI)
 
@@ -208,7 +208,7 @@ def query2(date:str,consider_0s:bool)-> list:
         FROM daily_count AS d
         WHERE d.countedswipes = min_count"""\
             .replace("mini_veronacard", string_scope)\
-            .replace("full_POI_2016", string_POIcollection + "_" + year)\
+            .replace("mini_POI_2016", string_POIcollection + "_" + year)\
             .replace("2016-08-09", date)
     else:
         print("\n[NOT considering days with 0 access]")
@@ -222,8 +222,9 @@ def query2(date:str,consider_0s:bool)-> list:
         SELECT sc.poiname, sc.count
         FROM swipescount AS sc
         WHERE sc.count = min_count
-         """.replace("mini_POI_2014", string_cardcollection + "_" + year).\
-            replace("2019-04-10",date)
+         """.replace("mini_POI_2014", string_POIcollection + "_" + year)\
+            .replace("mini_veronacard",string_scope)\
+            .replace("2014-12-29",date)
     # TODO: IF 0s ARE ADMITTED, RN IT ONLY CHECKS POIs THAT EXIST IN THAT YEAR.
     print(qry)
     return functions.execute_qry(qry,cluster)
@@ -231,8 +232,11 @@ def query2(date:str,consider_0s:bool)-> list:
 def query3(POI1:str,POI2:str)-> list:
     print("3. Dati due  POI, trovare i codici delle veronacard che hanno fatto strisciate nei due POI riportando tutte le strisciate fatte da quella verona card.")
 
-    print("[CREATING INDEX ON card(id)")
-    functions.execute_qry("create index idx_cardid if not exists on veronacard.mini_veronacard.mini_card(id)",cluster)
+    print("----\n* Creating necessary index on card(id) for ANSI join")
+    functions.execute_qry("create index idx_cardid if not exists on veronacard.mini_veronacard.mini_card(id)"\
+                          .replace("mini_veronacard",string_scope)\
+                          .replace("mini_card",string_cardcollection),
+                          cluster)
 
     print("\t ---- query ----")
 
