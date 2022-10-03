@@ -1,2 +1,3 @@
 pandas
 couchbase
+sql-formatter

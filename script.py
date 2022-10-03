@@ -10,18 +10,7 @@ import functions
 cb, cluster = functions.connect_to_db()
 
  # Establishes if we're working on  full data or a smaller sample.
-mini = "True" in argv[1]
-if mini:
-    string_scope = "mini_veronacard"
-    string_cardcollection = "mini_card"
-    string_POIcollection = "mini_POI"
-    string_rawcollection= "mini_raw"
-else:
-    string_scope = "full_veronacard"
-    string_cardcollection = "full_card"
-    string_POIcollection = "full_POI"
-    string_rawcollection= "full_raw"
-years = ["2014", "2015", "2016", "2017", "2018", "2019", "2020"]
+
 
 def load_raw_data():
     """
@@ -185,31 +174,49 @@ RIGHT JOIN
     print(functions.format_qry(qry))
     return functions.execute_qry(qry,cluster)
 
-def query2(date:str,consider_0s:bool)-> list:
+def query2(date:str, with0:bool)-> list:
     print("\n2. Trovare il punto di interesse che ha avuto il numero minimo di accessi in un giorno assegnato.\n\n\t ---- query ----")
 
     year = date[0:4]
-    if consider_0s:
+    if with0:
         print("[Considering days with 0 access]")
         qry = """
-        WITH swipeslist AS (SELECT poi.name AS poiname, COUNT(*) AS countedswipes
-                FROM veronacard.mini_veronacard.mini_POI_2016 AS poi
-                UNNEST poi.swipes AS s
-                WHERE DATE_FORMAT_STR(s.swipe_date,"1111-11-11") = "2016-08-09"
-                GROUP BY poi.name),
-          daily_count AS (SELECT n AS name, IFMISSINGORNULL(s.countedswipes, 0) AS countedswipes
-                          FROM (SELECT RAW poi.name
-                                FROM veronacard.mini_veronacard.mini_POI_2016 AS poi
-                                GROUP BY poi.name) AS n
-                          LEFT JOIN swipeslist AS s
-                          ON s.poiname = n),
-              min_count AS (ARRAY_MIN(daily_count[*].countedswipes))
-        SELECT d.*
-        FROM daily_count AS d
-        WHERE d.countedswipes = min_count"""\
+        with mincount as (
+    with totalcount as (
+        with swipecount AS (
+            SELECT poi.name AS poiname, COUNT(*) AS scount
+            FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNNEST poi.swipes AS s
+            WHERE s.swipe_date = "2014-12-29"
+            GROUP BY poi.name),
+            poilist as(
+            %POIQUERY%            ) 
+        select poilist.poiname, ifmissingornull(swipecount.scount,0) as scount
+        from swipecount right join poilist on poilist.poiname = swipecount.poiname
+        )
+    select raw MIN(totalcount.scount) 
+    from totalcount
+    ),
+totalcount2 as (with swipecount AS (
+        SELECT poi.name AS poiname, COUNT(*) AS scount
+        FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNNEST poi.swipes AS s
+        WHERE s.swipe_date = "2014-12-29"
+        GROUP BY poi.name),
+        poilist as(
+%POIQUERY%        ) 
+    select poilist.poiname, ifmissingornull(swipecount.scount,0) as scount
+    from swipecount right join poilist on poilist.poiname = swipecount.poiname
+    )
+select totalcount2.poiname, totalcount2.scount
+from totalcount2
+where totalcount2.scount within mincount"""\
             .replace("mini_veronacard", string_scope)\
-            .replace("mini_POI_2016", string_POIcollection + "_" + year)\
-            .replace("2016-08-09", date)
+            .replace("mini_POI_2014", string_POIcollection + "_" + year)\
+            .replace("2014-12-29", date)\
+            .replace("%POIQUERY%",
+                 "select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2014 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2015 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2016 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2017 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2018 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2019 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2020 as poi "\
+                    .replace("mini_POI",string_POIcollection)\
+                    .replace("mini_veronacard",string_scope)
+                 )
     else:
         print("\n[NOT considering days with 0 access]")
         qry = \
@@ -270,25 +277,40 @@ def query_with_formatting(query_function):
     print("\t------ stats -----")
     print("* {} documents".format(len(res)))
 
-if "load" in argv[1]:
- load_raw_data()
-elif "aggregate_card" in argv[1]:
-    aggregate_to_card()
-elif "aggregate_POI" in argv[1]:
-    aggregate_to_POI()
-elif "generate calendar" in argv[1]:
-    functions.generate_calendar(cluster, cb)
-elif "query1" in argv[1]:
-    query_with_formatting(query1("Arena","7","2015"))
-elif "query2" in argv[1]:
-    query_with_formatting(query2("2016-08-09","0s" in argv[1]))
-elif "query3" in argv[1]:
-    query_with_formatting(query3("Verona Tour","Santa Anastasia"))
-elif "idx_card" in argv[1]:
-    for year in years:
-        functions.create_primary_index(cluster,"full_card_"+year,string_scope)
-else:
+
+if len(argv) == 1:
     print("No operation selected...")
+else:
+    mini = "mini" in argv[1]
+    if mini:
+        string_scope = "mini_veronacard"
+        string_cardcollection = "mini_card"
+        string_POIcollection = "mini_POI"
+        string_rawcollection = "mini_raw"
+    else:
+        string_scope = "full_veronacard"
+        string_cardcollection = "full_card"
+        string_POIcollection = "full_POI"
+        string_rawcollection = "full_raw"
+
+    if "year" in argv[1]:
+        years = argv[2:]
+    else:
+        years = ["2014", "2015", "2016", "2017", "2018", "2019", "2020"]
+    if "load" in argv[1]:
+        load_raw_data()
+    if "calendar" in argv[1]:
+        functions.generate_calendar(cluster, cb)
+    if "aggregate_card" in argv[1]:
+        aggregate_to_card()
+    if "aggregate_POI" in argv[1]:
+        aggregate_to_POI()
+    if "query1" in argv[1]:
+        query_with_formatting(query1("Arena","7","2015"))
+    if "query2" in argv[1]:
+        query_with_formatting(query2("2016-08-09","with0" in argv[1]))
+    if "query3" in argv[1]:
+        query_with_formatting(query3("Verona Tour","Santa Anastasia"))
 
 print("done!")
 

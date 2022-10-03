@@ -51,7 +51,7 @@ def flush_collections(cluster:Cluster, collectionname:str,scopename:str):
         res.execute()
     except Exception as e:
         print(e)
-    print("* Creating collection "+collectionname+"if exists")
+    print("* Creating collection "+collectionname+" if not exists")
     qry = "CREATE COLLECTION veronacard."+scopename+".{} IF NOT EXISTS".format(collectionname)
     try:
         res = cluster.query(qry)
