@@ -180,40 +180,28 @@ def query2(date:str, with0:bool)-> list:
     year = date[0:4]
     if with0:
         print("[Considering days with 0 access]")
-        qry = """
-        with mincount as (
-    with totalcount as (
-        with swipecount AS (
-            SELECT poi.name AS poiname, COUNT(*) AS scount
-            FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNNEST poi.swipes AS s
-            WHERE s.swipe_date = "2014-12-29"
-            GROUP BY poi.name),
-            poilist as(
+        qry = """WITH totalcount AS (
+     WITH swipecount AS (
+         SELECT poi.name AS poiname, COUNT(*) AS scount
+         FROM veronacard.full_veronacard.full_POI_2016 AS poi UNNEST poi.swipes AS s
+         WHERE s.swipe_date = "2016-08-09"
+         GROUP BY poi.name),
+         poilist AS (
             %POIQUERY%            ) 
-        select poilist.poiname, ifmissingornull(swipecount.scount,0) as scount
-        from swipecount right join poilist on poilist.poiname = swipecount.poiname
-        )
-    select raw MIN(totalcount.scount) 
-    from totalcount
-    ),
-totalcount2 as (with swipecount AS (
-        SELECT poi.name AS poiname, COUNT(*) AS scount
-        FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNNEST poi.swipes AS s
-        WHERE s.swipe_date = "2014-12-29"
-        GROUP BY poi.name),
-        poilist as(
-%POIQUERY%        ) 
-    select poilist.poiname, ifmissingornull(swipecount.scount,0) as scount
-    from swipecount right join poilist on poilist.poiname = swipecount.poiname
-    )
-select totalcount2.poiname, totalcount2.scount
-from totalcount2
-where totalcount2.scount within mincount"""\
+            
+     SELECT poilist.poiname, IFMISSINGORNULL(swipecount.scount,0) AS scount
+     FROM swipecount RIGHT JOIN poilist ON poilist.poiname = swipecount.poiname
+     ),
+ 	mincount AS (
+ 	ARRAY_MIN(totalcount[*].scount))
+    SELECT totalcount.poiname, totalcount.scount
+    FROM totalcount
+    WHERE totalcount.scount = mincount"""\
             .replace("mini_veronacard", string_scope)\
             .replace("mini_POI_2014", string_POIcollection + "_" + year)\
             .replace("2014-12-29", date)\
             .replace("%POIQUERY%",
-                 "select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2014 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2015 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2016 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2017 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2018 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2019 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2020 as poi "\
+                 "SELECT DISTINCT poi.name AS poiname FROM veronacard.mini_veronacard.mini_POI_2014 AS poi UNION select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2015 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2016 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2017 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2018 as poi union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2019 as poi     union select distinct poi.name as poiname from veronacard.mini_veronacard.mini_POI_2020 as poi "\
                     .replace("mini_POI",string_POIcollection)\
                     .replace("mini_veronacard",string_scope)
                  )
@@ -232,7 +220,6 @@ where totalcount2.scount within mincount"""\
          """.replace("mini_POI_2014", string_POIcollection + "_" + year)\
             .replace("mini_veronacard",string_scope)\
             .replace("2014-12-29",date)
-    # TODO: IF 0s ARE ADMITTED, RN IT ONLY CHECKS POIs THAT EXIST IN THAT YEAR.
     print(qry)
     return functions.execute_qry(qry,cluster)
 
@@ -248,7 +235,8 @@ def query3(POI1:str,POI2:str)-> list:
     print("\t ---- query ----")
 
 
-    qry = """WITH eligibles AS (
+    qry = """
+    WITH eligibles AS (
     SELECT DISTINCT card.id AS id
     FROM veronacard.mini_veronacard.mini_card AS card UNNEST card.swipes AS s1 UNNEST card.swipes AS s2
     WHERE s1.POI_name = "Verona Tour" 
