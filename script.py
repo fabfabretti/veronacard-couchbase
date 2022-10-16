@@ -266,6 +266,46 @@ def query_with_formatting(query_function):
     print("* {} documents".format(len(res)))
 
 
+def generate_secondary_indexesq1(action:str):
+    if "create" in action:
+        idx_calendardate = "CREATE INDEX idx_date IF NOT EXISTS ON veronacard._default.calendar(date)"
+        functions.execute_qry(idx_calendardate,cluster)
+
+        for year in years:
+            functions.execute_qry("""
+            CREATE INDEX idx_q1 IF NOT EXISTS ON veronacard.full_veronacard.full_POI_%%(
+                ALL ARRAY (s.swipe_date) FOR s IN `swipes` END, name)""".replace("%%",year),cluster)
+    else:
+        idx_calendardate = "DROP INDEX idx_date IF EXISTS ON veronacard._default.calendar(date)"
+        functions.execute_qry(idx_calendardate,cluster)
+        for year in years:
+            functions.execute_qry("""
+            DROP INDEX idx_q1 IF EXISTS ON veronacard.full_veronacard.full_POI_%%(
+                ALL ARRAY (s.swipe_date) FOR s IN `swipes` END,  name)""".replace("%%",year),cluster)
+def generate_secondary_indexesq2(action:str):
+    if "drop" in action:
+        for year in years:
+            functions.execute_qry("""
+                drop index idx_POI_%%_datename  if exists on veronacard.full_veronacard.full_POI_%%;
+            """.replace("%%",year),cluster)
+    else:
+        for year in years:
+            functions.execute_qry("""
+                CREATE INDEX idx_POI_%%_datename if not exists ON veronacard.full_veronacard.full_POI_%%(ALL ARRAY `s`.`swipe_date` FOR s IN `swipes` END,`name`);
+            """.replace("%%",year),cluster)
+def generate_secondary_indexesq3(action:str):
+    if "create" in action:
+        idx_gen = "create index idx_q3 if not exists ON veronacard.full_veronacard.full_card(ALL ARRAY `s`.`POI_name` FOR s IN `swipes` END);"
+        idx_veronatour = "create index idx_q3 if not exists ON veronacard.full_veronacard.full_card(ALL ARRAY `s`.`POI_name` = \"Verona Tour\" FOR s IN `swipes` END);"
+        idx_santanastasia = "create index idx_q3 if not exists ON veronacard.full_veronacard.full_card(ALL ARRAY `s`.`POI_name` = \"Santa Anastasia\" FOR s IN `swipes` END);"
+        functions.execute_qry(idx_veronatour)
+        functions.execute_qry(idx_santanastasia)
+        functions.execute_qry(idx_gen)
+    else:
+        functions.execute_qry("drop index idx_q3 if exists ON veronacard.full_veronacard.full_card")
+        functions.execute_qry("drop index idx_q3b if exists ON veronacard.full_veronacard.full_card")
+        functions.execute_qry("drop index idx_q3c if exists ON veronacard.full_veronacard.full_card")
+
 if len(argv) == 1:
     print("No operation selected...")
 else:
@@ -299,15 +339,10 @@ else:
         query_with_formatting(query2("2016-08-09","with0" in argv[1]))
     if "query3" in argv[1]:
         query_with_formatting(query3("Verona Tour","Santa Anastasia"))
-
+    if "sec_indexq2" in argv[1]:
+        generate_secondary_indexesq2(argv[2])
+    if "sec_indexq3" in argv[1]:
+        generate_secondary_indexesq3(argv[2])
+    if "sec_indexq1" in argv[1]:
+        generate_secondary_indexesq1(argv[2])
 print("done!")
-
-###
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2014;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2015;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2016;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2017;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2018;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2019;
-#create primary index if not exists on veronacard.full_veronacard.full_POI_2020;
-###

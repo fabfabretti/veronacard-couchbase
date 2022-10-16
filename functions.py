@@ -88,7 +88,6 @@ def generate_calendar(cluster:Cluster, cb:Bucket):
         doc = { "date" : key}
         cb.scope("_default").collection("calendar").upsert(key, doc)
     create_primary_index(cluster,"calendar","_default")
-    execute_qry("CREATE INDEX idx_date ON veronacard._default.calendar(date)",cluster)
 
 
 def format_qry(qry:str):

@@ -18,6 +18,7 @@ Il file script.py permette di eseguire tutte le operazioni necessarie, ed è pos
 * `query1`: esegue la prima query e stampa i primi 10 documenti.
 * `query2`: esegue la seconda query e stampa i primi 10 documenti. Aggiungendo anche `with0` viene eseguita la versione alternativa.
 * `query3`: esegue la terza query e stampa i primi 10 documenti.
+* `sec_indexq1`,`sec_indexq2`,`sec_indexq3`: Passando `create` o `drop` come secondo parametro, creano o distruggono gli indici secondari relativi alla query indicata.
 * `mini`: in congiunzione con qualunque altra opzione, lavora su un dataset ridotto (3000 swipes per anno) anziché sul dataset completo.
 
 ## Presentazione
